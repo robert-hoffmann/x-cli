@@ -187,6 +187,20 @@ class TestChunkedUpload:
         with pytest.raises(RuntimeError, match="Invalid media"):
             client._upload_finalize_and_wait("789")
 
+    @patch("x_cli.api.time.sleep")
+    def test_poll_processing_times_out(self, mock_sleep, client):
+        """Processing that never succeeds must raise after max_polls."""
+        pending_resp = _ok_response({
+            "media_id_string": "789",
+            "processing_info": {"state": "in_progress", "check_after_secs": 0},
+        })
+        client._http.get.return_value = pending_resp
+
+        with pytest.raises(RuntimeError, match="timed out"):
+            client._poll_processing("789", {"state": "in_progress", "check_after_secs": 0}, max_polls=3)
+
+        assert client._http.get.call_count == 3
+
 
 # ============================================================
 # post_tweet with media_ids
