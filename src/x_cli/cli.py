@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 
 import click
 
@@ -9,6 +10,16 @@ from .api import XApiClient
 from .auth import load_credentials
 from .formatters import format_output
 from .utils import parse_tweet_id, strip_at
+
+
+def _resolve_media_ids(client: XApiClient, media_path: str | None) -> list[str] | None:
+    """Upload a media file and return a single-element media_ids list, or None."""
+    if not media_path:
+        return None
+    print(f"Uploading {media_path}…", file=sys.stderr)
+    media_id = client.upload_media(media_path)
+    print(f"Upload complete (media_id={media_id})", file=sys.stderr)
+    return [media_id]
 
 
 class State:
@@ -54,13 +65,15 @@ def tweet():
 
 @tweet.command("post")
 @click.argument("text")
+@click.option("--media", "media_path", default=None, type=click.Path(exists=True), help="Path to image or video file to attach")
 @click.option("--poll", default=None, help="Comma-separated poll options")
 @click.option("--poll-duration", default=1440, type=int, help="Poll duration in minutes")
 @pass_state
-def tweet_post(state, text, poll, poll_duration):
-    """Post a tweet."""
+def tweet_post(state, text, media_path, poll, poll_duration):
+    """Post a tweet, optionally with an image or video attachment."""
+    media_ids = _resolve_media_ids(state.client, media_path)
     poll_options = [o.strip() for o in poll.split(",")] if poll else None
-    data = state.client.post_tweet(text, poll_options=poll_options, poll_duration_minutes=poll_duration)
+    data = state.client.post_tweet(text, poll_options=poll_options, poll_duration_minutes=poll_duration, media_ids=media_ids)
     state.output(data, "Posted")
 
 
@@ -87,22 +100,26 @@ def tweet_delete(state, id_or_url):
 @tweet.command("reply")
 @click.argument("id_or_url")
 @click.argument("text")
+@click.option("--media", "media_path", default=None, type=click.Path(exists=True), help="Path to image or video file to attach")
 @pass_state
-def tweet_reply(state, id_or_url, text):
+def tweet_reply(state, id_or_url, text, media_path):
     """Reply to a tweet."""
     tid = parse_tweet_id(id_or_url)
-    data = state.client.post_tweet(text, reply_to=tid)
+    media_ids = _resolve_media_ids(state.client, media_path)
+    data = state.client.post_tweet(text, reply_to=tid, media_ids=media_ids)
     state.output(data, "Reply")
 
 
 @tweet.command("quote")
 @click.argument("id_or_url")
 @click.argument("text")
+@click.option("--media", "media_path", default=None, type=click.Path(exists=True), help="Path to image or video file to attach")
 @pass_state
-def tweet_quote(state, id_or_url, text):
+def tweet_quote(state, id_or_url, text, media_path):
     """Quote tweet."""
     tid = parse_tweet_id(id_or_url)
-    data = state.client.post_tweet(text, quote_tweet_id=tid)
+    media_ids = _resolve_media_ids(state.client, media_path)
+    data = state.client.post_tweet(text, quote_tweet_id=tid, media_ids=media_ids)
     state.output(data, "Quote")
 
 

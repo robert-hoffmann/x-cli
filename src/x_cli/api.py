@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import mimetypes
+import os
+import time
 from typing import Any
 
 import httpx
@@ -9,6 +12,19 @@ import httpx
 from .auth import Credentials, generate_oauth_header
 
 API_BASE = "https://api.x.com/2"
+UPLOAD_BASE = "https://upload.twitter.com/1.1/media/upload.json"
+
+# Chunked upload threshold: files > 1 MB use chunked flow (required for video).
+_CHUNK_THRESHOLD = 1 * 1024 * 1024
+_CHUNK_SIZE = 4 * 1024 * 1024  # 4 MB per APPEND segment
+
+# MIME → media_category mapping for chunked INIT
+_MEDIA_CATEGORIES: dict[str, str] = {
+    "image/gif": "tweet_gif",
+    "video/mp4": "tweet_video",
+    "video/quicktime": "tweet_video",
+    "video/webm": "tweet_video",
+}
 
 
 class XApiClient:
@@ -52,6 +68,123 @@ class XApiClient:
         self._user_id = data["data"]["id"]
         return self._user_id
 
+    # ---- media upload (v1.1 chunked) ----
+
+    def _upload_oauth_header(self, method: str, params: dict[str, str] | None = None) -> str:
+        """Build OAuth header for the v1.1 upload endpoint.
+
+        For INIT/FINALIZE/STATUS the form-encoded params are included in the
+        signature base string.  For APPEND (multipart) *no* body params are
+        included — the OAuth spec excludes multipart entities.
+        """
+        return generate_oauth_header(method, UPLOAD_BASE, self.creds, params=params)
+
+    def upload_media(self, file_path: str) -> str:
+        """Upload a media file and return its *media_id_string*.
+
+        Uses the simple upload path for small images and the INIT / APPEND /
+        FINALIZE / (STATUS) chunked flow for large files and video.
+        """
+        path = os.path.expanduser(file_path)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Media file not found: {path}")
+
+        file_size = os.path.getsize(path)
+        mime_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        is_video = mime_type.startswith("video/")
+
+        # Video *must* use chunked; images may use simple if small enough.
+        if is_video or file_size > _CHUNK_THRESHOLD:
+            return self._chunked_upload(path, file_size, mime_type)
+        return self._simple_upload(path, mime_type)
+
+    # -- simple (small images) --
+
+    def _simple_upload(self, path: str, mime_type: str) -> str:
+        auth = self._upload_oauth_header("POST")
+        with open(path, "rb") as fh:
+            files = {"media": (os.path.basename(path), fh, mime_type)}
+            resp = self._http.post(
+                UPLOAD_BASE,
+                headers={"Authorization": auth},
+                files=files,
+            )
+        data = self._handle(resp)
+        return str(data["media_id_string"])
+
+    # -- chunked (video / large files) --
+
+    def _chunked_upload(self, path: str, total_bytes: int, mime_type: str) -> str:
+        media_category = _MEDIA_CATEGORIES.get(mime_type, "tweet_image")
+        media_id = self._upload_init(total_bytes, mime_type, media_category)
+        self._upload_append_all(media_id, path)
+        return self._upload_finalize_and_wait(media_id)
+
+    def _upload_init(self, total_bytes: int, media_type: str, media_category: str) -> str:
+        params = {
+            "command": "INIT",
+            "total_bytes": str(total_bytes),
+            "media_type": media_type,
+            "media_category": media_category,
+        }
+        auth = self._upload_oauth_header("POST", params=params)
+        resp = self._http.post(UPLOAD_BASE, headers={"Authorization": auth}, data=params)
+        data = self._handle(resp)
+        return str(data["media_id_string"])
+
+    def _upload_append_all(self, media_id: str, path: str) -> None:
+        segment = 0
+        with open(path, "rb") as fh:
+            while True:
+                chunk = fh.read(_CHUNK_SIZE)
+                if not chunk:
+                    break
+                # APPEND is multipart → body params excluded from OAuth sig
+                auth = self._upload_oauth_header("POST")
+                resp = self._http.post(
+                    UPLOAD_BASE,
+                    headers={"Authorization": auth},
+                    data={"command": "APPEND", "media_id": media_id, "segment_index": str(segment)},
+                    files={"media": ("blob", chunk, "application/octet-stream")},
+                )
+                if not resp.is_success:
+                    self._handle(resp)  # raises
+                segment += 1
+
+    def _upload_finalize_and_wait(self, media_id: str) -> str:
+        params = {"command": "FINALIZE", "media_id": media_id}
+        auth = self._upload_oauth_header("POST", params=params)
+        resp = self._http.post(UPLOAD_BASE, headers={"Authorization": auth}, data=params)
+        data = self._handle(resp)
+
+        # Video processing is async — poll STATUS until done.
+        processing = data.get("processing_info")
+        if processing:
+            self._poll_processing(media_id, processing)
+
+        return str(data["media_id_string"])
+
+    def _poll_processing(self, media_id: str, processing: dict, max_polls: int = 60) -> None:
+        for _ in range(max_polls):
+            state = processing.get("state", "")
+            if state == "succeeded":
+                return
+            if state == "failed":
+                error = processing.get("error", {})
+                msg = error.get("message", "Media processing failed")
+                raise RuntimeError(f"Media processing failed: {msg}")
+
+            wait = processing.get("check_after_secs", 5)
+            time.sleep(wait)
+
+            params = {"command": "STATUS", "media_id": media_id}
+            auth = self._upload_oauth_header("GET", params=params)
+            resp = self._http.get(UPLOAD_BASE, headers={"Authorization": auth}, params=params)
+            data = self._handle(resp)
+            processing = data.get("processing_info", {})
+
+        raise RuntimeError("Media processing timed out")
+
     # ---- tweets ----
 
     def post_tweet(
@@ -61,6 +194,7 @@ class XApiClient:
         quote_tweet_id: str | None = None,
         poll_options: list[str] | None = None,
         poll_duration_minutes: int = 1440,
+        media_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"text": text}
         if reply_to:
@@ -69,6 +203,8 @@ class XApiClient:
             body["quote_tweet_id"] = quote_tweet_id
         if poll_options:
             body["poll"] = {"options": poll_options, "duration_minutes": poll_duration_minutes}
+        if media_ids:
+            body["media"] = {"media_ids": media_ids}
         return self._oauth_request("POST", f"{API_BASE}/tweets", body)
 
     def delete_tweet(self, tweet_id: str) -> dict[str, Any]:
