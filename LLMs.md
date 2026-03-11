@@ -45,6 +45,7 @@ Global flags: `-j`/`--json`, `-p`/`--plain`, `-md`/`--markdown` control output m
 
 - **Read-only endpoints** (get_tweet, search, get_user, get_timeline, get_followers, get_following) use Bearer token auth via `_bearer_get()` or direct `httpx` calls with Bearer header.
 - **Write endpoints** (post_tweet, delete_tweet, like, retweet, bookmark) use OAuth 1.0a via `_oauth_request()`.
+- **Media upload** uses the v1.1 `upload.twitter.com` endpoint (not v2). Small images use a simple multipart POST; videos and large files use the chunked INIT → APPEND → FINALIZE → STATUS flow. `upload_media(path)` handles routing automatically and returns a `media_id_string` for use in `post_tweet(media_ids=)`.
 - **Authenticated read endpoints** (get_mentions, get_bookmarks) use OAuth 1.0a because they access the authenticated user's data.
 - `get_authenticated_user_id()` resolves and caches the current user's numeric ID (needed for like/retweet/bookmark/mentions endpoints).
 
@@ -81,11 +82,11 @@ Four modes routed by `format_output(data, mode, title, verbose)`:
 
 | Command | Args | Flags | API method |
 |---------|------|-------|------------|
-| `post` | `TEXT` | `--poll OPTIONS` `--poll-duration MINS` | `post_tweet()` |
+| `post` | `TEXT` | `--media PATH` `--poll OPTIONS` `--poll-duration MINS` | `upload_media()` + `post_tweet()` |
 | `get` | `ID_OR_URL` | | `get_tweet()` |
 | `delete` | `ID_OR_URL` | | `delete_tweet()` |
-| `reply` | `ID_OR_URL` `TEXT` | | `post_tweet(reply_to=)` |
-| `quote` | `ID_OR_URL` `TEXT` | | `post_tweet(quote_tweet_id=)` |
+| `reply` | `ID_OR_URL` `TEXT` | `--media PATH` | `upload_media()` + `post_tweet(reply_to=)` |
+| `quote` | `ID_OR_URL` `TEXT` | `--media PATH` | `upload_media()` + `post_tweet(quote_tweet_id=)` |
 | `search` | `QUERY` | `--max N` | `search_tweets()` |
 | `metrics` | `ID_OR_URL` | | `get_tweet_metrics()` |
 
