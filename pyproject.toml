@@ -2,7 +2,7 @@
 name = "x-cli"
 version = "0.1.0"
 description = "CLI for X/Twitter API v2"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "click>=8.1",
     "httpx>=0.27",
@@ -25,3 +25,7 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[tool.uv]
+package = false
+exclude-newer = "7 days"

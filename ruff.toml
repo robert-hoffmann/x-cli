@@ -1,0 +1,93 @@
+# ruff — fast Python linter & formatter
+# https://docs.astral.sh/ruff/configuration/
+
+# ── Target ───────────────────────────────────────────────────────────────────
+
+target-version = "py310"    # minimum supported Python version
+line-length    = 100
+
+# ── File discovery ───────────────────────────────────────────────────────────
+
+include = ["**/*.py", "**/*.pyi"]
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "*.egg-info",
+]
+
+# ── Linting ───────────────────────────────────────────────────────────────────
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort (import order)
+    "N",    # pep8-naming
+    "UP",   # pyupgrade — modernise syntax
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "RUF",  # Ruff-specific rules
+    # ── Hardening ─────────────────────────
+    "S",    # flake8-bandit — security
+    "A",    # flake8-builtins — no shadowing builtins
+    "DTZ",  # flake8-datetimez — timezone-aware datetimes
+    "PGH",  # pygrep-hooks — no blanket type: ignore / noqa
+    "FA",   # flake8-future-annotations
+    "PERF", # perflint — performance anti-patterns
+    "PLE",  # pylint errors
+    "PLW",  # pylint warnings
+    # ── Quality ───────────────────────────
+    "PIE",  # flake8-pie — misc lint
+    "RSE",  # flake8-raise
+    "ISC",  # implicit-string-concat
+    "FLY",  # flynt — f-string conversion
+    "FURB", # refurb — modern Python
+]
+
+ignore = [
+    "E501",  # line-too-long          — handled by line-length setting
+    "E221",  # multiple spaces before op  — required for separator-column alignment
+    "E241",  # multiple spaces after ','  — required for separator-column alignment
+    "E251",  # spaces around kw default   — required for aligned keyword arguments
+    "E203",  # whitespace before ':'      — required for type-annotation alignment
+]
+
+# Allow fixing everything that is auto-fixable
+fixable = ["ALL"]
+unfixable = []
+
+# ── Per-file ignores ──────────────────────────────────────────────────────────
+
+[lint.per-file-ignores]
+"**/tests/**/*.py" = [
+    "S101",  # assert is expected in tests
+    "S603",  # subprocess calls are safe in test harness
+    "S607",  # partial executable paths OK in tests
+]
+
+# ── Formatting ────────────────────────────────────────────────────────────────
+#
+# `ruff format` is DISABLED for this project.
+#
+# Reason: our ub-quality standard (formatting-alignment.md) mandates
+# separator-column alignment — e.g.
+#
+#   name  : str      = Field(...)
+#   email : EmailStr
+#   role  : UserRole = UserRole.VIEWER
+#
+# ruff format (Black-based) unconditionally strips extra whitespace and
+# has no configuration flag to preserve column alignment.
+#
+# Use `ruff check --fix` for auto-fixable lint/import issues only.
+# Do NOT run `ruff format` on this project.
+
+# ── isort ────────────────────────────────────────────────────────────────────
+
+[lint.isort]
+force-sort-within-sections = true
+known-first-party          = []
