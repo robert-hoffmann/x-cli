@@ -11,7 +11,7 @@ Uses the same auth credentials as [x-mcp](https://github.com/INFATOSHI/x-mcp). I
 ## What Can It Do?
 
 | Category | Commands | Examples |
-|----------|----------|----------|
+| ---------- | ---------- | ---------- |
 | **Post** | `tweet post`, `tweet reply`, `tweet quote`, `tweet delete` | `x-cli tweet post "hello world"`, `x-cli tweet post --media photo.jpg "check this out"` |
 | **Read** | `tweet get`, `tweet search`, `user timeline`, `me mentions` | `x-cli tweet search "from:elonmusk"` |
 | **Users** | `user get`, `user followers`, `user following` | `x-cli user get openai` |
@@ -60,7 +60,7 @@ ln -s /path/to/x-mcp/.env ~/.config/x-cli/.env
 
 Put all 5 values in `~/.config/x-cli/.env`:
 
-```
+```text
 X_API_KEY=your_consumer_key
 X_API_SECRET=your_secret_key
 X_BEARER_TOKEN=your_bearer_token
@@ -141,15 +141,19 @@ x-cli -v -j tweet get <id>           # full JSON (includes, meta, everything)
 ## Troubleshooting
 
 ### 403 "oauth1-permissions" when posting
+
 Your Access Token was generated before you enabled write permissions. Go to the X Developer Portal, set App permissions to "Read and write", then **Regenerate** your Access Token and Secret.
 
 ### 401 Unauthorized
+
 Double-check all 5 credentials in your `.env`. No extra spaces or newlines.
 
 ### 429 Rate Limited
+
 The error includes the reset timestamp. Wait until then.
 
 ### "Missing env var" on startup
+
 x-cli looks for credentials in `~/.config/x-cli/.env`, then the current directory's `.env`, then environment variables. Make sure at least one source has all 5 values.
 
 ---
