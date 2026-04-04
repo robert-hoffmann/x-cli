@@ -1,9 +1,9 @@
 version = 1
 revision = 3
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [options]
-exclude-newer = "2026-03-28T11:20:07.197359Z"
+exclude-newer = "2026-03-28T11:34:22.328447Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -227,7 +227,7 @@ wheels = [
 [[package]]
 name = "x-cli"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "click" },
     { name = "httpx" },

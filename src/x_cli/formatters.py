@@ -9,7 +9,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-
 # ---- JSON ----
 
 def output_json(data: Any, verbose: bool = False) -> None:
@@ -48,8 +47,7 @@ def _plain_dict(d: dict, verbose: bool = False) -> None:
     for k, v in d.items():
         if not verbose and k in skip:
             continue
-        if isinstance(v, (dict, list)):
-            v = json.dumps(v, default=str)
+        v = json.dumps(v, default=str) if isinstance(v, (dict, list)) else str(v)
         print(f"{k}\t{v}")
 
 

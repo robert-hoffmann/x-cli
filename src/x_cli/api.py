@@ -47,7 +47,7 @@ class XApiClient:
         headers: dict[str, str] = {"Authorization": auth_header}
         if json_body is not None:
             headers["Content-Type"] = "application/json"
-        resp = self._http.request(method, url, headers=headers, json=json_body if json_body else None)
+        resp = self._http.request(method, url, headers=headers, json=json_body or None)
         return self._handle(resp)
 
     def _handle(self, resp: httpx.Response) -> dict[str, Any]:
@@ -62,11 +62,12 @@ class XApiClient:
         return data
 
     def get_authenticated_user_id(self) -> str:
-        if self._user_id:
+        if self._user_id is not None:
             return self._user_id
         data = self._oauth_request("GET", f"{API_BASE}/users/me")
-        self._user_id = data["data"]["id"]
-        return self._user_id
+        user_id = data["data"]["id"]
+        self._user_id = user_id
+        return user_id
 
     # ---- media upload (v1.1 chunked) ----
 
