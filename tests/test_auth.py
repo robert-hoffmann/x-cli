@@ -3,7 +3,8 @@
 
 import pytest
 
-from x_cli.auth import generate_oauth_header, Credentials
+from x_cli.auth import Credentials, generate_oauth_header, load_credentials
+from x_cli.errors import ConfigurationError
 
 
 @pytest.fixture
@@ -49,3 +50,19 @@ class TestGenerateOAuthHeader:
         url = "https://api.x.com/2/tweets/123?tweet.fields=created_at,public_metrics"
         header = generate_oauth_header("GET", url, creds)
         assert header.startswith("OAuth ")
+
+
+class TestLoadCredentials:
+    def test_reports_all_missing_vars(self, monkeypatch):
+        monkeypatch.setattr("x_cli.auth.load_dotenv", lambda *args, **kwargs: False)
+        for name in (
+            "X_API_KEY",
+            "X_API_SECRET",
+            "X_ACCESS_TOKEN",
+            "X_ACCESS_TOKEN_SECRET",
+            "X_BEARER_TOKEN",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+        with pytest.raises(ConfigurationError, match="X_API_KEY, X_API_SECRET"):
+            load_credentials()

@@ -65,6 +65,7 @@ unfixable = []
 [lint.per-file-ignores]
 "**/tests/**/*.py" = [
     "S101",  # assert is expected in tests
+    "S106",  # fixture credentials are dummy values in tests
     "S603",  # subprocess calls are safe in test harness
     "S607",  # partial executable paths OK in tests
 ]

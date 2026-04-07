@@ -2,7 +2,7 @@
 
 import pytest
 
-from x_cli.utils import parse_tweet_id, strip_at
+from x_cli.utils import normalize_username, parse_tweet_id, strip_at
 
 
 class TestParseTweetId:
@@ -17,6 +17,9 @@ class TestParseTweetId:
 
     def test_twitter_url(self):
         assert parse_tweet_id("https://twitter.com/elonmusk/status/9999") == "9999"
+
+    def test_mobile_x_url(self):
+        assert parse_tweet_id("https://mobile.x.com/user/status/1234567890") == "1234567890"
 
     def test_url_with_query_params(self):
         assert parse_tweet_id("https://x.com/user/status/123?s=20") == "123"
@@ -39,3 +42,12 @@ class TestStripAt:
 
     def test_empty(self):
         assert strip_at("") == ""
+
+
+class TestNormalizeUsername:
+    def test_strips_whitespace_and_at(self):
+        assert normalize_username("  @elonmusk  ") == "elonmusk"
+
+    def test_rejects_empty(self):
+        with pytest.raises(ValueError, match="Username cannot be empty"):
+            normalize_username("   @   ")

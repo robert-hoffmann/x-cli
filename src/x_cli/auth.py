@@ -14,21 +14,32 @@ import urllib.parse
 
 from dotenv import load_dotenv  # .env file loader
 
+from .errors import ConfigurationError
+
 # region Types
 # ============================================================================
 # Types
 # ============================================================================
 
 
-@dataclass
+REQUIRED_ENV_VARS = (
+    "X_API_KEY",
+    "X_API_SECRET",
+    "X_ACCESS_TOKEN",
+    "X_ACCESS_TOKEN_SECRET",
+    "X_BEARER_TOKEN",
+)
+
+
+@dataclass(frozen=True, slots=True)
 class Credentials:
     """OAuth and bearer credentials loaded from environment variables."""
 
-    api_key: str
-    api_secret: str
-    access_token: str
-    access_token_secret: str
-    bearer_token: str
+    api_key             : str
+    api_secret          : str
+    access_token        : str
+    access_token_secret : str
+    bearer_token        : str
 
 
 # endregion Types
@@ -41,28 +52,29 @@ class Credentials:
 
 
 def load_credentials() -> Credentials:
-    """Load credentials from env vars, with .env fallback."""
+    """Load credentials from env vars, with config and cwd `.env` fallbacks."""
     # Try ~/.config/x-cli/.env first, then cwd .env
     config_env = Path.home() / ".config" / "x-cli" / ".env"
     if config_env.exists():
         load_dotenv(config_env)
     load_dotenv()  # cwd .env (won't override already-set vars)
 
-    def require(name: str) -> str:
-        val = os.environ.get(name)
-        if not val:
-            raise SystemExit(
-                f"Missing env var: {name}. "
-                "Set X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET, X_BEARER_TOKEN."
-            )
-        return val
+    env_values = {name: (os.environ.get(name) or "").strip() for name in REQUIRED_ENV_VARS}
+    missing = [name for name in REQUIRED_ENV_VARS if not env_values[name]]
+    if missing:
+        missing_text = ", ".join(missing)
+        raise ConfigurationError(
+            "Missing required credentials: "
+            f"{missing_text}. "
+            "Checked ~/.config/x-cli/.env, ./.env, and the current environment."
+        )
 
     return Credentials(
-        api_key=require("X_API_KEY"),
-        api_secret=require("X_API_SECRET"),
-        access_token=require("X_ACCESS_TOKEN"),
-        access_token_secret=require("X_ACCESS_TOKEN_SECRET"),
-        bearer_token=require("X_BEARER_TOKEN"),
+        api_key             = env_values["X_API_KEY"],
+        api_secret          = env_values["X_API_SECRET"],
+        access_token        = env_values["X_ACCESS_TOKEN"],
+        access_token_secret = env_values["X_ACCESS_TOKEN_SECRET"],
+        bearer_token        = env_values["X_BEARER_TOKEN"],
     )
 
 
@@ -81,19 +93,19 @@ def _percent_encode(s: str) -> str:
 
 
 def generate_oauth_header(
-    method: str,
-    url: str,
-    creds: Credentials,
-    params: dict[str, str] | None = None,
+    method : str,
+    url    : str,
+    creds  : Credentials,
+    params : dict[str, str] | None = None,
 ) -> str:
     """Generate an OAuth 1.0a Authorization header (HMAC-SHA1)."""
     oauth_params = {
-        "oauth_consumer_key": creds.api_key,
-        "oauth_nonce": secrets.token_hex(16),
+        "oauth_consumer_key"    : creds.api_key,
+        "oauth_nonce"           : secrets.token_hex(16),
         "oauth_signature_method": "HMAC-SHA1",
-        "oauth_timestamp": str(int(time.time())),
-        "oauth_token": creds.access_token,
-        "oauth_version": "1.0",
+        "oauth_timestamp"       : str(int(time.time())),
+        "oauth_token"           : creds.access_token,
+        "oauth_version"         : "1.0",
     }
 
     # Merge oauth, body, and query-string params for the signature base

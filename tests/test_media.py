@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import os
 import tempfile
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from x_cli.api import (
-    XApiClient,
-    UPLOAD_BASE,
-    _CHUNK_THRESHOLD,
     _CHUNK_SIZE,
+    _CHUNK_THRESHOLD,
     _MEDIA_CATEGORIES,
+    XApiClient,
+    _media_category_for,
 )
 from x_cli.auth import Credentials
+from x_cli.errors import InputError
 
 
 @pytest.fixture
@@ -40,10 +41,9 @@ def client(creds):
 
 def _make_file(suffix: str, size: int) -> str:
     """Create a temp file of *size* bytes and return its path."""
-    f = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    f.write(b"\x00" * size)
-    f.close()
-    return f.name
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as file_handle:
+        file_handle.write(b"\x00" * size)
+        return file_handle.name
 
 
 def _ok_response(json_data: dict, status_code: int = 200):
@@ -61,7 +61,7 @@ def _ok_response(json_data: dict, status_code: int = 200):
 
 class TestUploadMediaRouting:
     def test_raises_on_missing_file(self, client):
-        with pytest.raises(FileNotFoundError, match="Media file not found"):
+        with pytest.raises(InputError, match="Media file not found"):
             client.upload_media("/nonexistent/photo.jpg")
 
     def test_small_image_uses_simple(self, client):
@@ -208,16 +208,16 @@ class TestChunkedUpload:
 
 class TestPostTweetWithMedia:
     def test_includes_media_ids_in_body(self, client):
-        client._http.request.return_value = _ok_response({"data": {"id": "999"}})
+        client._http.post.return_value = _ok_response({"data": {"id": "999"}})
         client.post_tweet("hello", media_ids=["123", "456"])
-        _, kwargs = client._http.request.call_args
+        _, kwargs = client._http.post.call_args
         body = kwargs.get("json")
         assert body["media"] == {"media_ids": ["123", "456"]}
 
     def test_omits_media_when_none(self, client):
-        client._http.request.return_value = _ok_response({"data": {"id": "999"}})
+        client._http.post.return_value = _ok_response({"data": {"id": "999"}})
         client.post_tweet("hello")
-        _, kwargs = client._http.request.call_args
+        _, kwargs = client._http.post.call_args
         body = kwargs.get("json")
         assert "media" not in body
 
@@ -235,3 +235,6 @@ class TestMediaCategories:
 
     def test_unknown_falls_back_to_tweet_image(self):
         assert _MEDIA_CATEGORIES.get("image/png", "tweet_image") == "tweet_image"
+
+    def test_unknown_video_falls_back_to_tweet_video(self):
+        assert _media_category_for("video/x-m4v") == "tweet_video"

@@ -2,7 +2,7 @@
 
 import json
 
-from x_cli.formatters import output_json, output_plain, output_markdown
+from x_cli.formatters import output_json, output_markdown, output_plain
 
 
 class TestOutputJson:
