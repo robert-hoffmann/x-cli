@@ -1,15 +1,20 @@
-"""Click CLI for x-cli."""
+"""Click CLI entry point for x-cli."""
 
 from __future__ import annotations
 
 import sys
 
-import click
+import click  # CLI framework
 
 from .api import XApiClient
 from .auth import load_credentials
 from .formatters import format_output
 from .utils import parse_tweet_id, strip_at
+
+# region Helpers
+# ============================================================================
+# Helpers
+# ============================================================================
 
 
 def _resolve_media_ids(client: XApiClient, media_path: str | None) -> list[str] | None:
@@ -22,7 +27,18 @@ def _resolve_media_ids(client: XApiClient, media_path: str | None) -> list[str] 
     return [media_id]
 
 
+# endregion Helpers
+
+
+# region State
+# ============================================================================
+# CLI State
+# ============================================================================
+
+
 class State:
+    """Shared CLI state carrying output mode and a lazily-initialized API client."""
+
     def __init__(self, mode: str, verbose: bool = False) -> None:
         self.mode = mode
         self.verbose = verbose
@@ -30,23 +46,40 @@ class State:
 
     @property
     def client(self) -> XApiClient:
+        """Lazily create and cache the API client on first access."""
         if self._client is None:
             creds = load_credentials()
             self._client = XApiClient(creds)
         return self._client
 
     def output(self, data, title: str = "") -> None:
+        """Route data through the configured formatter."""
         format_output(data, self.mode, title, verbose=self.verbose)
 
 
 pass_state = click.make_pass_decorator(State)
 
 
+# endregion State
+
+
+# region CLI Group
+# ============================================================================
+# CLI Group
+# ============================================================================
+
+
 @click.group()
 @click.option("--json", "-j", "fmt", flag_value="json", help="JSON output")
 @click.option("--plain", "-p", "fmt", flag_value="plain", help="TSV output for piping")
 @click.option("--markdown", "-md", "fmt", flag_value="markdown", help="Markdown output")
-@click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose output (show metrics, timestamps, metadata)")
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Verbose output (show metrics, timestamps, metadata)",
+)
 @click.pass_context
 def cli(ctx, fmt, verbose):
     """x-cli: CLI for X/Twitter API v2."""
@@ -54,9 +87,14 @@ def cli(ctx, fmt, verbose):
     ctx.obj = State(fmt or "human", verbose=verbose)
 
 
-# ============================================================
-# tweet
-# ============================================================
+# endregion CLI Group
+
+
+# region Tweet Commands
+# ============================================================================
+# Tweet Commands
+# ============================================================================
+
 
 @cli.group()
 def tweet():
@@ -65,7 +103,13 @@ def tweet():
 
 @tweet.command("post")
 @click.argument("text")
-@click.option("--media", "media_path", default=None, type=click.Path(exists=True), help="Path to image or video file to attach")
+@click.option(
+    "--media",
+    "media_path",
+    default=None,
+    type=click.Path(exists=True),
+    help="Path to image or video file to attach",
+)
 @click.option("--poll", default=None, help="Comma-separated poll options")
 @click.option("--poll-duration", default=1440, type=int, help="Poll duration in minutes")
 @pass_state
@@ -73,7 +117,9 @@ def tweet_post(state, text, media_path, poll, poll_duration):
     """Post a tweet, optionally with an image or video attachment."""
     media_ids = _resolve_media_ids(state.client, media_path)
     poll_options = [o.strip() for o in poll.split(",")] if poll else None
-    data = state.client.post_tweet(text, poll_options=poll_options, poll_duration_minutes=poll_duration, media_ids=media_ids)
+    data = state.client.post_tweet(
+        text, poll_options=poll_options, poll_duration_minutes=poll_duration, media_ids=media_ids
+    )
     state.output(data, "Posted")
 
 
@@ -100,7 +146,13 @@ def tweet_delete(state, id_or_url):
 @tweet.command("reply")
 @click.argument("id_or_url")
 @click.argument("text")
-@click.option("--media", "media_path", default=None, type=click.Path(exists=True), help="Path to image or video file to attach")
+@click.option(
+    "--media",
+    "media_path",
+    default=None,
+    type=click.Path(exists=True),
+    help="Path to image or video file to attach",
+)
 @pass_state
 def tweet_reply(state, id_or_url, text, media_path):
     """Reply to a tweet."""
@@ -113,7 +165,13 @@ def tweet_reply(state, id_or_url, text, media_path):
 @tweet.command("quote")
 @click.argument("id_or_url")
 @click.argument("text")
-@click.option("--media", "media_path", default=None, type=click.Path(exists=True), help="Path to image or video file to attach")
+@click.option(
+    "--media",
+    "media_path",
+    default=None,
+    type=click.Path(exists=True),
+    help="Path to image or video file to attach",
+)
 @pass_state
 def tweet_quote(state, id_or_url, text, media_path):
     """Quote tweet."""
@@ -143,9 +201,14 @@ def tweet_metrics(state, id_or_url):
     state.output(data, f"Metrics {tid}")
 
 
-# ============================================================
-# user
-# ============================================================
+# endregion Tweet Commands
+
+
+# region User Commands
+# ============================================================================
+# User Commands
+# ============================================================================
+
 
 @cli.group()
 def user():
@@ -200,9 +263,14 @@ def user_following(state, username, max_results):
     state.output(data, f"@{uname} following")
 
 
-# ============================================================
-# me
-# ============================================================
+# endregion User Commands
+
+
+# region Me Commands
+# ============================================================================
+# Me Commands (Authenticated User)
+# ============================================================================
+
 
 @cli.group()
 def me():
@@ -247,9 +315,14 @@ def me_unbookmark(state, id_or_url):
     state.output(data, "Unbookmarked")
 
 
-# ============================================================
-# quick actions (top-level)
-# ============================================================
+# endregion Me Commands
+
+
+# region Quick Actions
+# ============================================================================
+# Quick Actions (Top-Level)
+# ============================================================================
+
 
 @cli.command("like")
 @click.argument("id_or_url")
@@ -271,9 +344,22 @@ def retweet(state, id_or_url):
     state.output(data, "Retweeted")
 
 
+# endregion Quick Actions
+
+
+# region Entry Point
+# ============================================================================
+# Entry Point
+# ============================================================================
+
+
 def main():
+    """CLI entry point."""
     cli()
 
 
 if __name__ == "__main__":
     main()
+
+
+# endregion Entry Point

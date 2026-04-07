@@ -1,20 +1,44 @@
-"""Output formatters: human (rich), JSON, TSV/plain, markdown."""
+"""Output formatters: human (Rich), JSON, TSV/plain, and markdown."""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+from rich.console import Console  # terminal rendering
+from rich.panel import Panel  # bordered output panels
+from rich.table import Table  # tabular user listings
 
-# ---- JSON ----
+# region Shared Helpers
+# ============================================================================
+# Shared Helpers
+# ============================================================================
+
+
+def _resolve_author(author_id: str | None, includes: dict) -> str:
+    """Resolve an author_id to @username via the includes payload."""
+    if not author_id:
+        return "?"
+    users = includes.get("users", [])
+    for u in users:
+        if u.get("id") == author_id:
+            return f"@{u.get('username', '?')}"
+    return author_id
+
+
+# endregion Shared Helpers
+
+
+# region JSON
+# ============================================================================
+# JSON Formatter
+# ============================================================================
+
 
 def output_json(data: Any, verbose: bool = False) -> None:
     """Raw JSON to stdout."""
     if not verbose and isinstance(data, dict):
-        # Strip includes/meta, just emit data
+        # Strip includes/meta envelope, emit only the data payload
         inner = data.get("data")
         if inner is not None:
             print(json.dumps(inner, indent=2, default=str))
@@ -22,7 +46,14 @@ def output_json(data: Any, verbose: bool = False) -> None:
     print(json.dumps(data, indent=2, default=str))
 
 
-# ---- Plain/TSV ----
+# endregion JSON
+
+
+# region Plain/TSV
+# ============================================================================
+# Plain / TSV Formatter
+# ============================================================================
+
 
 def output_plain(data: Any, verbose: bool = False) -> None:
     """TSV output for piping."""
@@ -43,22 +74,35 @@ def output_plain(data: Any, verbose: bool = False) -> None:
 
 
 def _plain_dict(d: dict, verbose: bool = False) -> None:
-    skip = set() if verbose else {"public_metrics", "entities", "edit_history_tweet_ids", "attachments", "referenced_tweets", "profile_image_url"}
+    """Print a single dict as key<TAB>value lines."""
+    skip = (
+        set()
+        if verbose
+        else {
+            "public_metrics",
+            "entities",
+            "edit_history_tweet_ids",
+            "attachments",
+            "referenced_tweets",
+            "profile_image_url",
+        }
+    )
     for k, v in d.items():
         if not verbose and k in skip:
             continue
-        v = json.dumps(v, default=str) if isinstance(v, (dict, list)) else str(v)
-        print(f"{k}\t{v}")
+        rendered = json.dumps(v, default=str) if isinstance(v, (dict, list)) else str(v)
+        print(f"{k}\t{rendered}")
 
 
 def _plain_list(items: list, verbose: bool = False) -> None:
+    """Print a list of dicts as a TSV table with a header row."""
     if not items:
         return
     if not isinstance(items[0], dict):
         for item in items:
             print(item)
         return
-    # Pick columns based on verbose
+    # Pick columns based on verbose flag
     all_keys = list(items[0].keys())
     if verbose:
         keys = all_keys
@@ -81,7 +125,14 @@ def _plain_list(items: list, verbose: bool = False) -> None:
         print("\t".join(vals))
 
 
-# ---- Markdown ----
+# endregion Plain/TSV
+
+
+# region Markdown
+# ============================================================================
+# Markdown Formatter
+# ============================================================================
+
 
 def output_markdown(data: Any, title: str = "", verbose: bool = False) -> None:
     """Markdown output to stdout."""
@@ -108,6 +159,7 @@ def output_markdown(data: Any, title: str = "", verbose: bool = False) -> None:
 
 
 def _md_single(item: dict, includes: dict, title: str = "", verbose: bool = False) -> None:
+    """Route a single item to the tweet or user markdown renderer."""
     if "username" in item:
         _md_user(item, verbose)
     else:
@@ -115,6 +167,7 @@ def _md_single(item: dict, includes: dict, title: str = "", verbose: bool = Fals
 
 
 def _md_tweet(tweet: dict, includes: dict, title: str = "", verbose: bool = False) -> None:
+    """Render a single tweet as markdown."""
     author = _resolve_author(tweet.get("author_id"), includes)
     text = tweet.get("text", "")
     tweet_id = tweet.get("id", "")
@@ -143,6 +196,7 @@ def _md_tweet(tweet: dict, includes: dict, title: str = "", verbose: bool = Fals
 
 
 def _md_user(user: dict, verbose: bool = False) -> None:
+    """Render a single user profile as markdown."""
     name = user.get("name", "")
     username = user.get("username", "")
     desc = user.get("description", "")
@@ -167,6 +221,7 @@ def _md_user(user: dict, verbose: bool = False) -> None:
 
 
 def _md_list(items: list, includes: dict, title: str = "", verbose: bool = False) -> None:
+    """Render a list of tweets or users as markdown."""
     if not items:
         return
     if title:
@@ -181,6 +236,7 @@ def _md_list(items: list, includes: dict, title: str = "", verbose: bool = False
 
 
 def _md_user_table(users: list, verbose: bool = False) -> None:
+    """Render a list of users as a markdown table."""
     if verbose:
         print("| Username | Name | Followers | Description |")
         print("|----------|------|-----------|-------------|")
@@ -198,14 +254,20 @@ def _md_user_table(users: list, verbose: bool = False) -> None:
             print(f"| @{u.get('username', '')} | {u.get('name', '')} | {followers} |")
 
 
-# ---- Rich (human-readable) ----
+# endregion Markdown
+
+
+# region Rich
+# ============================================================================
+# Rich / Human Formatter
+# ============================================================================
 
 _console = Console(stderr=True)
 _stdout = Console()
 
 
 def output_human(data: Any, title: str = "", verbose: bool = False) -> None:
-    """Pretty-print with rich."""
+    """Pretty-print with Rich panels and tables."""
     if isinstance(data, dict):
         inner = data.get("data")
         includes = data.get("includes", {})
@@ -228,17 +290,8 @@ def output_human(data: Any, title: str = "", verbose: bool = False) -> None:
         _stdout.print(data)
 
 
-def _resolve_author(author_id: str | None, includes: dict) -> str:
-    if not author_id:
-        return "?"
-    users = includes.get("users", [])
-    for u in users:
-        if u.get("id") == author_id:
-            return f"@{u.get('username', '?')}"
-    return author_id
-
-
 def _human_single(item: dict, includes: dict, title: str = "", verbose: bool = False) -> None:
+    """Route a single item to the tweet or user Rich renderer."""
     if "username" in item:
         _human_user(item, verbose)
     else:
@@ -246,6 +299,7 @@ def _human_single(item: dict, includes: dict, title: str = "", verbose: bool = F
 
 
 def _human_tweet(tweet: dict, includes: dict, title: str = "", verbose: bool = False) -> None:
+    """Render a single tweet as a Rich panel."""
     author = _resolve_author(tweet.get("author_id"), includes)
     text = tweet.get("text", "")
     tweet_id = tweet.get("id", "")
@@ -263,7 +317,9 @@ def _human_tweet(tweet: dict, includes: dict, title: str = "", verbose: bool = F
     if verbose:
         metrics = tweet.get("public_metrics", {})
         if metrics:
-            parts = [f"{k.replace('_count', '').replace('_', ' ')}: {v}" for k, v in metrics.items()]
+            parts = [
+                f"{k.replace('_count', '').replace('_', ' ')}: {v}" for k, v in metrics.items()
+            ]
             content += f"\n\n[dim]{' | '.join(parts)}[/dim]"
 
     panel_title = title or f"Tweet {tweet_id}"
@@ -271,6 +327,7 @@ def _human_tweet(tweet: dict, includes: dict, title: str = "", verbose: bool = F
 
 
 def _human_user(user: dict, verbose: bool = False) -> None:
+    """Render a single user profile as a Rich panel."""
     name = user.get("name", "")
     username = user.get("username", "")
     desc = user.get("description", "")
@@ -303,6 +360,7 @@ def _human_user(user: dict, verbose: bool = False) -> None:
 
 
 def _human_tweet_list(items: list, includes: dict, title: str = "", verbose: bool = False) -> None:
+    """Render a list of tweets or users with Rich."""
     if items and "username" in items[0]:
         _human_user_table(items, title, verbose)
     else:
@@ -311,6 +369,7 @@ def _human_tweet_list(items: list, includes: dict, title: str = "", verbose: boo
 
 
 def _human_user_table(users: list, title: str = "", verbose: bool = False) -> None:
+    """Render a list of users as a Rich table."""
     table = Table(title=title or "Users", show_lines=True)
     table.add_column("Username", style="bold")
     table.add_column("Name")
@@ -332,10 +391,17 @@ def _human_user_table(users: list, title: str = "", verbose: bool = False) -> No
     _stdout.print(table)
 
 
-# ---- Router ----
+# endregion Rich
+
+
+# region Router
+# ============================================================================
+# Router
+# ============================================================================
+
 
 def format_output(data: Any, mode: str = "human", title: str = "", verbose: bool = False) -> None:
-    """Route to the appropriate formatter."""
+    """Route to the appropriate formatter by mode name."""
     if mode == "json":
         output_json(data, verbose)
     elif mode == "plain":
@@ -344,3 +410,6 @@ def format_output(data: Any, mode: str = "human", title: str = "", verbose: bool
         output_markdown(data, title, verbose)
     else:
         output_human(data, title, verbose)
+
+
+# endregion Router

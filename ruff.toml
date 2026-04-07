@@ -3,7 +3,7 @@
 
 # ── Target ───────────────────────────────────────────────────────────────────
 
-target-version = "py310"    # minimum supported Python version
+target-version = "py312"    # minimum supported Python version
 line-length    = 100
 
 # ── File discovery ───────────────────────────────────────────────────────────
