@@ -32,6 +32,10 @@ class TestParseTweetId:
         with pytest.raises(ValueError):
             parse_tweet_id("")
 
+    def test_too_long_numeric_id_raises(self):
+        with pytest.raises(ValueError, match="Invalid tweet ID"):
+            parse_tweet_id("1" * 20)
+
 
 class TestStripAt:
     def test_with_at(self):
@@ -51,3 +55,11 @@ class TestNormalizeUsername:
     def test_rejects_empty(self):
         with pytest.raises(ValueError, match="Username cannot be empty"):
             normalize_username("   @   ")
+
+    def test_rejects_invalid_chars(self):
+        with pytest.raises(ValueError, match="letters, numbers, or underscores"):
+            normalize_username("bad-name")
+
+    def test_rejects_too_long(self):
+        with pytest.raises(ValueError, match="1-15 characters"):
+            normalize_username("a" * 16)

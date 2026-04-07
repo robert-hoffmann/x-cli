@@ -1,6 +1,6 @@
 # x-cli
 
-x-cli is a terminal-first client for X/Twitter. It uses the v2 API for tweets, users, bookmarks, and timelines, and the v1.1 upload endpoint for media attachments.
+x-cli is a terminal-first client for X/Twitter. It uses the v2 API for tweets, users, bookmarks, and timelines, and a legacy v1.1 upload endpoint for media attachments.
 
 It shares the same credentials as [x-mcp](https://github.com/INFATOSHI/x-mcp). If you already have x-mcp set up, x-cli usually works with no extra auth setup.
 
@@ -10,7 +10,7 @@ If you're an LLM or automation agent working in this repo, read [LLMs.md](./LLMs
 ## What It Covers
 
 - Post: `tweet post`, `tweet reply`, `tweet quote`, `tweet delete`
-- Media: `tweet post --media`, `tweet reply --media`, `tweet quote --media`
+- Media: `tweet post --media`, `tweet reply --media`
 - Read: `tweet get`, `tweet search`, `user timeline`, `me mentions`
 - Users: `user get`, `user followers`, `user following`
 - Engage: `like`, `retweet`
@@ -76,8 +76,66 @@ X_ACCESS_TOKEN        = your_access_token
 X_ACCESS_TOKEN_SECRET = your_access_token_secret
 ```
 
-x-cli also checks the current directory for a `.env` file before falling back to environment variables.
+x-cli loads credentials from:
+
+1. Existing environment variables
+2. `~/.config/x-cli/.env`
+3. `./.env`
+
+The `.env` loaders do not override values that are already present in the process environment.
 <!-- #endregion Auth -->
+
+<!-- #region Compatibility -->
+## Verified API Compatibility
+
+Verified against the current X API docs on April 8, 2026.
+
+Confirmed endpoint coverage in the current client:
+
+- Posts: `POST /2/tweets`, `DELETE /2/tweets/{id}`, `GET /2/tweets/{id}`, `GET /2/tweets/search/recent`
+- Users: `GET /2/users/by/username/{username}`, `GET /2/users/{id}/tweets`, `GET /2/users/{id}/followers`, `GET /2/users/{id}/following`, `GET /2/users/{id}/mentions`, `GET /2/users/me`
+- Engagement: `POST /2/users/{id}/likes`, `POST /2/users/{id}/retweets`
+- Bookmarks: `GET /2/users/{id}/bookmarks`, `POST /2/users/{id}/bookmarks`, `DELETE /2/users/{id}/bookmarks/{tweet_id}`
+- Metrics: `GET /2/tweets/{id}` with `tweet.fields=public_metrics,non_public_metrics,organic_metrics`
+
+Current auth model in this repo:
+
+- Public read endpoints use the app bearer token.
+- User-context endpoints use OAuth 1.0a user context with access token + access token secret.
+
+Auth policy for this project:
+
+- x-cli is optimized for headless AI-agent use, not browser-driven end-user login.
+- The project intentionally supports only app bearer auth and OAuth 1.0a user context.
+- OAuth 2.0 PKCE is intentionally out of scope for now.
+
+X still documents OAuth 1.0a as a supported auth method for acting on behalf of a user, so the current user-context model remains grounded in the official auth docs. Some newer endpoint guides and quickstarts lead with OAuth 2.0 user tokens, but this CLI intentionally stays on the simpler headless auth model.
+
+Validated development environment versions:
+
+- Python `3.12.11`
+- `click 8.3.1`
+- `httpx 0.28.1`
+- `rich 14.3.3`
+- `python-dotenv 1.2.2`
+
+Version-policy note:
+
+- `pyproject.toml` now declares floors that match the currently validated stable releases. The project still uses `>=` ranges rather than exact pins, so installs remain flexible rather than fully reproducible.
+
+Known compatibility gaps to fill later:
+
+- Media upload is still implemented with the legacy `upload.twitter.com/1.1/media/upload.json` flow. X now documents the `/2/media/upload` family as the newer media upload surface, but those docs currently center OAuth 2.0 user tokens. Because this project intentionally stays on bearer + OAuth 1.0a, media remains on the legacy upload flow for now.
+- Bookmark quickstarts emphasize OAuth 2.0 PKCE scopes, but the bookmarks introduction still documents OAuth 2.0 PKCE or 3-legged OAuth. We are intentionally staying on the 3-legged OAuth / OAuth 1.0a path.
+- The client only covers a subset of current post creation options. Missing documented fields include edit options, reply settings, tagged users, card URIs, communities, and other newer post payload options.
+- Undo actions are missing for likes and retweets, even though X documents the corresponding delete endpoints.
+- Pagination is only partial. The formatter shows `next_token`, but the CLI has no `--pagination-token`, `--since-id`, or `--until-id` flags for endpoints that support them.
+- Bookmark folders, liked-post lookup, retweet lookup, and newer user/content management endpoints are not surfaced yet.
+
+Compatibility note:
+
+- `tweet quote --media` is intentionally not supported. The CLI now follows the documented mutually exclusive payload rules for quote posts, polls, and media attachments.
+<!-- #endregion Compatibility -->
 
 <!-- #region QuickStart -->
 ## Quick Start
@@ -86,7 +144,7 @@ x-cli also checks the current directory for a `.env` file before falling back to
 x-cli tweet post "Hello world"
 x-cli tweet post --media ~/Pictures/photo.jpg "Ship log"
 x-cli tweet reply 1890000000000000000 --media ./reply.png "good catch"
-x-cli tweet quote https://x.com/user/status/1890000000000000000 --media ./clip.mp4 "Worth watching"
+x-cli tweet quote https://x.com/user/status/1890000000000000000 "Worth watching"
 x-cli tweet search "has:media from:openai" --max 10
 x-cli user timeline openai --max 5
 x-cli me bookmarks --max 20
@@ -115,7 +173,6 @@ x-cli tweet reply <id-or-url> --media ./reply.jpg "adding context"
 
 ```bash
 x-cli tweet quote <id-or-url> "this is important"
-x-cli tweet quote <id-or-url> --media ./clip.mp4 "watch this part"
 ```
 
 ### Inspect or remove posts
@@ -131,11 +188,10 @@ x-cli tweet search "machine learning" --max 20
 <!-- #region Media -->
 ## Media Uploads
 
-Media attachments are supported on three commands today:
+Media attachments are supported on two commands today:
 
 - `x-cli tweet post --media PATH TEXT`
 - `x-cli tweet reply ID_OR_URL --media PATH TEXT`
-- `x-cli tweet quote ID_OR_URL --media PATH TEXT`
 
 Current behavior:
 
@@ -160,7 +216,6 @@ Examples:
 ```bash
 x-cli tweet post --media ./photo.jpg "Release photo"
 x-cli tweet reply <id-or-url> --media ~/Downloads/diagram.png "here is the diagram"
-x-cli tweet quote <id-or-url> --media ./demo.mp4 "demo attached"
 ```
 <!-- #endregion Media -->
 
@@ -238,9 +293,9 @@ Re-check all five credentials in your `.env`. Extra whitespace and stale tokens 
 
 The error includes the reset timestamp returned by X. Wait until that time before retrying.
 
-### `Missing env var` on startup
+### `Missing required credentials` on startup
 
-x-cli looks in `~/.config/x-cli/.env`, then the current directory's `.env`, then environment variables. At least one source must provide all five values.
+x-cli reports exactly which credential names are missing. Existing environment variables win, then `~/.config/x-cli/.env`, then `./.env`.
 
 ### `Media file not found`
 

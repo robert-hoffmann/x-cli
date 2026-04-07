@@ -78,6 +78,19 @@ class TestTransportHandling:
             client.search_tweets("hello")
 
 
+class TestAuthenticatedUser:
+    def test_get_authenticated_user_caches_response(self, client):
+        client._oauth_request = MagicMock(return_value={"data": {"id": "1", "username": "agent"}})
+
+        first = client.get_authenticated_user()
+        second = client.get_authenticated_user()
+
+        assert first["data"]["username"] == "agent"
+        assert second is first
+        client._oauth_request.assert_called_once()
+        assert client.get_authenticated_user_id() == "1"
+
+
 class TestPostValidation:
     def test_rejects_poll_and_media_together(self, client):
         with pytest.raises(InputError, match="Poll posts cannot include media attachments"):

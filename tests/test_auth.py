@@ -3,7 +3,7 @@
 
 import pytest
 
-from x_cli.auth import Credentials, generate_oauth_header, load_credentials
+from x_cli.auth import Credentials, generate_oauth_header, inspect_credentials, load_credentials
 from x_cli.errors import ConfigurationError
 
 
@@ -53,6 +53,20 @@ class TestGenerateOAuthHeader:
 
 
 class TestLoadCredentials:
+    def test_inspect_credentials_reports_present_and_missing(self, monkeypatch):
+        monkeypatch.setattr("x_cli.auth.load_dotenv", lambda *args, **kwargs: False)
+        monkeypatch.setenv("X_API_KEY", "key")
+        monkeypatch.setenv("X_API_SECRET", "secret")
+        monkeypatch.setenv("X_ACCESS_TOKEN", "token")
+        monkeypatch.delenv("X_ACCESS_TOKEN_SECRET", raising=False)
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+
+        status = inspect_credentials()
+
+        assert status.ok is False
+        assert "X_API_KEY" in status.present
+        assert "X_ACCESS_TOKEN_SECRET" in status.missing
+
     def test_reports_all_missing_vars(self, monkeypatch):
         monkeypatch.setattr("x_cli.auth.load_dotenv", lambda *args, **kwargs: False)
         for name in (

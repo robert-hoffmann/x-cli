@@ -2,7 +2,7 @@
 
 import json
 
-from x_cli.formatters import output_json, output_markdown, output_plain
+from x_cli.formatters import output_human, output_json, output_markdown, output_plain
 
 
 class TestOutputJson:
@@ -105,3 +105,18 @@ class TestOutputMarkdown:
         captured = capsys.readouterr()
         assert "| @a |" in captured.out
         assert "| @b |" in captured.out
+
+    def test_generic_dict_renders_json_block(self, capsys):
+        output_markdown({"tool": "x-cli", "checks": [{"name": "ok", "ok": True}]}, title="Doctor")
+        captured = capsys.readouterr()
+        assert "## Doctor" in captured.out
+        assert "```json" in captured.out
+        assert '"tool": "x-cli"' in captured.out
+
+
+class TestOutputHuman:
+    def test_generic_dict_renders_panel(self, capsys):
+        output_human({"tool": "x-cli", "checks": [{"name": "ok", "ok": True}]}, title="Doctor")
+        captured = capsys.readouterr()
+        assert "Doctor" in captured.out
+        assert '"tool": "x-cli"' in captured.out

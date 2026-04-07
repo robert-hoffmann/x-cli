@@ -42,6 +42,23 @@ class Credentials:
     bearer_token        : str
 
 
+@dataclass(frozen=True, slots=True)
+class CredentialStatus:
+    """Presence-only credential report for diagnostics and help output."""
+
+    config_env_path   : Path
+    cwd_env_path      : Path
+    config_env_exists : bool
+    cwd_env_exists    : bool
+    present           : tuple[str, ...]
+    missing           : tuple[str, ...]
+
+    @property
+    def ok(self) -> bool:
+        """Return True when all required credential variables are present."""
+        return not self.missing
+
+
 # endregion Types
 
 
@@ -51,18 +68,44 @@ class Credentials:
 # ============================================================================
 
 
-def load_credentials() -> Credentials:
-    """Load credentials from env vars, with config and cwd `.env` fallbacks."""
-    # Try ~/.config/x-cli/.env first, then cwd .env
+def _load_env_sources() -> tuple[Path, Path]:
+    """Load config and cwd `.env` files without overriding existing variables."""
     config_env = Path.home() / ".config" / "x-cli" / ".env"
+    cwd_env = Path.cwd() / ".env"
     if config_env.exists():
         load_dotenv(config_env)
     load_dotenv()  # cwd .env (won't override already-set vars)
+    return config_env, cwd_env
 
-    env_values = {name: (os.environ.get(name) or "").strip() for name in REQUIRED_ENV_VARS}
-    missing = [name for name in REQUIRED_ENV_VARS if not env_values[name]]
-    if missing:
-        missing_text = ", ".join(missing)
+
+def _env_values() -> dict[str, str]:
+    """Return stripped required credential values from the current environment."""
+    return {name: (os.environ.get(name) or "").strip() for name in REQUIRED_ENV_VARS}
+
+
+def inspect_credentials() -> CredentialStatus:
+    """Inspect credential presence without constructing a Credentials object."""
+    config_env, cwd_env = _load_env_sources()
+    env_values = _env_values()
+    present = tuple(name for name, value in env_values.items() if value)
+    missing = tuple(name for name, value in env_values.items() if not value)
+    return CredentialStatus(
+        config_env_path   = config_env,
+        cwd_env_path      = cwd_env,
+        config_env_exists = config_env.exists(),
+        cwd_env_exists    = cwd_env.exists(),
+        present           = present,
+        missing           = missing,
+    )
+
+
+def load_credentials() -> Credentials:
+    """Load credentials from env vars, with config and cwd `.env` fallbacks."""
+    status = inspect_credentials()
+    env_values = _env_values()
+
+    if status.missing:
+        missing_text = ", ".join(status.missing)
         raise ConfigurationError(
             "Missing required credentials: "
             f"{missing_text}. "

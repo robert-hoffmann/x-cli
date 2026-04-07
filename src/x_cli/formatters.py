@@ -26,6 +26,31 @@ def _resolve_author(author_id: str | None, includes: dict) -> str:
     return author_id
 
 
+def _looks_like_user(item: dict[str, Any]) -> bool:
+    """Return True when a dict resembles a user payload."""
+    return "username" in item and "name" in item
+
+
+def _looks_like_tweet(item: dict[str, Any]) -> bool:
+    """Return True when a dict resembles a tweet payload."""
+    return "text" in item and "id" in item
+
+
+def _is_user_list(items: list[Any]) -> bool:
+    """Return True when a list resembles a list of user payloads."""
+    return bool(items) and all(isinstance(item, dict) and _looks_like_user(item) for item in items)
+
+
+def _is_tweet_list(items: list[Any]) -> bool:
+    """Return True when a list resembles a list of tweet payloads."""
+    return bool(items) and all(isinstance(item, dict) and _looks_like_tweet(item) for item in items)
+
+
+def _dump_json_block(data: Any) -> str:
+    """Return a stable pretty JSON string for generic payload rendering."""
+    return json.dumps(data, indent=2, default=str)
+
+
 # endregion Shared Helpers
 
 
@@ -160,10 +185,12 @@ def output_markdown(data: Any, title: str = "", verbose: bool = False) -> None:
 
 def _md_single(item: dict, includes: dict, title: str = "", verbose: bool = False) -> None:
     """Route a single item to the tweet or user markdown renderer."""
-    if "username" in item:
+    if _looks_like_user(item):
         _md_user(item, verbose)
-    else:
+    elif _looks_like_tweet(item):
         _md_tweet(item, includes, title, verbose)
+    else:
+        _md_generic(item, title)
 
 
 def _md_tweet(tweet: dict, includes: dict, title: str = "", verbose: bool = False) -> None:
@@ -226,13 +253,15 @@ def _md_list(items: list, includes: dict, title: str = "", verbose: bool = False
         return
     if title:
         print(f"## {title}\n")
-    if items and "username" in items[0]:
+    if _is_user_list(items):
         _md_user_table(items, verbose)
-    else:
+    elif _is_tweet_list(items):
         for i, item in enumerate(items):
             if i > 0:
                 print("\n---\n")
             _md_tweet(item, includes, verbose=verbose)
+    else:
+        _md_generic(items)
 
 
 def _md_user_table(users: list, verbose: bool = False) -> None:
@@ -252,6 +281,15 @@ def _md_user_table(users: list, verbose: bool = False) -> None:
             m = u.get("public_metrics", {})
             followers = f"{m.get('followers_count', 0):,}"
             print(f"| @{u.get('username', '')} | {u.get('name', '')} | {followers} |")
+
+
+def _md_generic(data: Any, title: str = "") -> None:
+    """Render non-X payloads as fenced JSON for agents and humans alike."""
+    if title:
+        print(f"## {title}\n")
+    print("```json")
+    print(_dump_json_block(data))
+    print("```")
 
 
 # endregion Markdown
@@ -292,10 +330,12 @@ def output_human(data: Any, title: str = "", verbose: bool = False) -> None:
 
 def _human_single(item: dict, includes: dict, title: str = "", verbose: bool = False) -> None:
     """Route a single item to the tweet or user Rich renderer."""
-    if "username" in item:
+    if _looks_like_user(item):
         _human_user(item, verbose)
-    else:
+    elif _looks_like_tweet(item):
         _human_tweet(item, includes, title, verbose)
+    else:
+        _human_generic(item, title)
 
 
 def _human_tweet(tweet: dict, includes: dict, title: str = "", verbose: bool = False) -> None:
@@ -361,11 +401,13 @@ def _human_user(user: dict, verbose: bool = False) -> None:
 
 def _human_tweet_list(items: list, includes: dict, title: str = "", verbose: bool = False) -> None:
     """Render a list of tweets or users with Rich."""
-    if items and "username" in items[0]:
+    if _is_user_list(items):
         _human_user_table(items, title, verbose)
-    else:
+    elif _is_tweet_list(items):
         for item in items:
             _human_tweet(item, includes, verbose=verbose)
+    else:
+        _human_generic(items, title)
 
 
 def _human_user_table(users: list, title: str = "", verbose: bool = False) -> None:
@@ -389,6 +431,12 @@ def _human_user_table(users: list, title: str = "", verbose: bool = False) -> No
             row.append((u.get("description", "") or "")[:50])
         table.add_row(*row)
     _stdout.print(table)
+
+
+def _human_generic(data: Any, title: str = "") -> None:
+    """Render generic diagnostic payloads in a neutral Rich panel."""
+    panel_title = title or "Result"
+    _stdout.print(Panel(_dump_json_block(data), title=panel_title, border_style="cyan", expand=False))
 
 
 # endregion Rich

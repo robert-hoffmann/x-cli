@@ -100,8 +100,9 @@ class XApiClient:
 
     def __init__(self, creds: Credentials) -> None:
         self.creds = creds
-        self._user_id: str | None = None
-        self._http = httpx.Client(timeout=30.0)
+        self._user_id             : str | None = None
+        self._authenticated_user  : dict[str, Any] | None = None
+        self._http                = httpx.Client(timeout=30.0)
 
     def close(self) -> None:
         """Shut down the underlying HTTP connection pool."""
@@ -180,14 +181,28 @@ class XApiClient:
             raise ApiError("X API returned an unexpected response payload.")
         return data
 
+    def get_authenticated_user(self) -> dict[str, Any]:
+        """Return the authenticated user's profile (cached after first call)."""
+        if self._authenticated_user is not None:
+            return self._authenticated_user
+
+        params = {
+            "user.fields": (
+                "created_at,description,location,name,profile_image_url,"
+                "public_metrics,url,username,verified"
+            )
+        }
+        data = self._oauth_request("GET", f"{API_BASE}/users/me", query_params=params)
+        self._user_id = self._require_data_id(data, context="loading the authenticated user")
+        self._authenticated_user = data
+        return data
+
     def get_authenticated_user_id(self) -> str:
         """Return the authenticated user's ID (cached after first call)."""
         if self._user_id is not None:
             return self._user_id
-        data = self._oauth_request("GET", f"{API_BASE}/users/me")
-        user_id = self._require_data_id(data, context="loading the authenticated user")
-        self._user_id = user_id
-        return user_id
+        data = self.get_authenticated_user()
+        return self._require_data_id(data, context="loading the authenticated user")
 
     def _response_error_message(self, resp: httpx.Response, data: Any | None) -> str:
         """Extract the clearest available error message from a response."""

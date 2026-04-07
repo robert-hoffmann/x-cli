@@ -7,9 +7,10 @@ import re
 from .errors import InputError
 
 _TWEET_URL_PATTERN = re.compile(
-    r"^(?:https?://)?(?:www\.|mobile\.)?(?:twitter\.com|x\.com)/[A-Za-z0-9_]+/status/(\d+)(?:[/?#].*)?$",
+    r"^(?:https?://)?(?:www\.|mobile\.)?(?:twitter\.com|x\.com)/[A-Za-z0-9_]+/status/(\d{1,19})(?:[/?#].*)?$",
     re.IGNORECASE,
 )
+_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 
 
 def parse_tweet_id(input_str: str) -> str:
@@ -18,7 +19,7 @@ def parse_tweet_id(input_str: str) -> str:
     if not stripped:
         raise InputError("Tweet ID or URL cannot be empty.")
 
-    if re.fullmatch(r"\d+", stripped):
+    if re.fullmatch(r"\d{1,19}", stripped):
         return stripped
 
     match = _TWEET_URL_PATTERN.fullmatch(stripped)
@@ -38,4 +39,8 @@ def normalize_username(username: str) -> str:
     normalized = strip_at(username.strip())
     if not normalized:
         raise InputError("Username cannot be empty.")
+    if not _USERNAME_PATTERN.fullmatch(normalized):
+        raise InputError(
+            "Username must be 1-15 characters and contain only letters, numbers, or underscores."
+        )
     return normalized
